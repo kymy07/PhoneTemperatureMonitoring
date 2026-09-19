@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ms">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f17">
-<meta name="description" content="Pantau thermal throttling phone anda (Android & iPhone) terus dari browser. Tiada login.">
+<meta name="description" content="Detect thermal throttling and scan your phone's hardware (Android & iPhone) right from the browser. No login.">
 <title>ThermoCheck</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -40,8 +40,10 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
   h1 span { color: var(--accent); }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0; font-weight: 600; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
   .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
   .pill.live { color: var(--cool); border-color: color-mix(in srgb, var(--cool) 40%, transparent); }
   .pill.live::before { content: "● "; animation: blink 1.4s infinite; }
@@ -64,6 +66,8 @@
     background: var(--card-2); color: var(--text); cursor: pointer; min-height: 46px;
   }
   button.primary { background: var(--accent); color: #04121c; border-color: transparent; }
+  button.wide { width: 100%; }
+  button.mini { min-height: 0; padding: 4px 10px; font-size: 12px; border-radius: 8px; margin-top: 6px; }
   button:disabled { opacity: .5; cursor: default; }
   button:active:not(:disabled) { transform: scale(.98); }
 
@@ -76,12 +80,28 @@
   .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
   .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
 
-  .rows { display: grid; gap: 8px; }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .rows { display: grid; }
+  .rows.spaced { margin-top: 10px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
   .row span:first-child { color: var(--muted); white-space: nowrap; }
-  .row span:last-child { text-align: right; font-weight: 600; }
+  .row span:last-child { text-align: right; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
   .na { color: var(--muted); font-weight: 400 !important; font-style: italic; }
+
+  /* Hardware components */
+  .comp { list-style: none; margin: 12px 0 0; padding: 0; }
+  .comp li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .comp li:last-child { border-bottom: 0; }
+  .comp .ico { font-size: 20px; line-height: 1.3; text-align: center; }
+  .comp .name { font-weight: 600; }
+  .comp .detail { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .comp .detail div + div { margin-top: 2px; }
+  .chip { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; margin-top: 2px; }
+  .chip.ok { color: var(--cool); }
+  .chip.no { color: var(--crit); }
+  .chip.denied { color: var(--hot); }
+  .chip.wait { color: var(--accent); }
+  .chip.idle, .chip.na { color: var(--muted); }
 
   details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -94,10 +114,10 @@
 <main>
   <header>
     <h1>Thermo<span>Check</span></h1>
-    <span id="livePill" class="pill">Berhenti</span>
+    <span id="livePill" class="pill">Stopped</span>
   </header>
 
-  <!-- Main gauge -->
+  <!-- Thermal gauge -->
   <section class="card">
     <div class="gauge-wrap">
       <svg class="gauge" viewBox="0 0 200 130" aria-hidden="true">
@@ -106,79 +126,102 @@
       </svg>
       <div class="gauge-center">
         <div class="big"><span id="pct">--</span><small>%</small></div>
-        <div id="statusText" class="status">Sedia</div>
+        <div id="statusText" class="status">Ready</div>
       </div>
     </div>
-    <p id="hint" class="hint">Tekan <b>Mula Pantau</b>. Kalibrasi masa phone sejuk untuk bacaan paling tepat.</p>
+    <p id="hint" class="hint">Tap <b>Start Monitoring</b>. Calibrate while the phone is cool for the most accurate reading.</p>
     <div class="btns">
-      <button id="startBtn" class="primary">Mula Pantau</button>
-      <button id="calBtn">Kalibrasi (Sejuk)</button>
+      <button id="startBtn" class="primary">Start Monitoring</button>
+      <button id="calBtn">Calibrate (Cool)</button>
     </div>
   </section>
 
-  <!-- Stats -->
+  <!-- Performance -->
   <section class="card">
-    <h2>Prestasi sekarang</h2>
+    <div class="card-head"><h2>Performance now</h2></div>
     <div class="stats">
-      <div class="stat"><b id="fps">--</b><span>FPS skrin</span></div>
-      <div class="stat"><b id="score">--</b><span>Skor CPU</span></div>
-      <div class="stat"><b id="minPct">--</b><span>Paling rendah</span></div>
+      <div class="stat"><b id="fps">--</b><span>Screen FPS</span></div>
+      <div class="stat"><b id="score">--</b><span>CPU score</span></div>
+      <div class="stat"><b id="minPct">--</b><span>Lowest</span></div>
+    </div>
+    <div class="rows spaced">
+      <div class="row"><span>System CPU pressure</span><span id="pressure" class="na">Not supported</span></div>
+      <div class="row"><span>Cool baseline</span><span id="baseline" class="na">Not calibrated</span></div>
+      <div class="row"><span>Screen stays on</span><span id="wake" class="na">—</span></div>
     </div>
   </section>
 
   <!-- Chart -->
   <section class="card">
-    <h2>Sejarah prestasi (10 minit)</h2>
+    <div class="card-head"><h2>Performance history (10 min)</h2></div>
     <canvas id="chart"></canvas>
     <div class="legend">
-      <span><i style="background:var(--cool)"></i>Sejuk ≥90%</span>
-      <span><i style="background:var(--warm)"></i>Suam 75–89%</span>
-      <span><i style="background:var(--hot)"></i>Panas 60–74%</span>
-      <span><i style="background:var(--crit)"></i>Sangat panas &lt;60%</span>
+      <span><i style="background:var(--cool)"></i>Cool ≥90%</span>
+      <span><i style="background:var(--warm)"></i>Warm 75–89%</span>
+      <span><i style="background:var(--hot)"></i>Hot 60–74%</span>
+      <span><i style="background:var(--crit)"></i>Critical &lt;60%</span>
     </div>
   </section>
 
-  <!-- Device sensors -->
+  <!-- Device info (no permission needed) -->
   <section class="card">
-    <h2>Info peranti</h2>
+    <div class="card-head"><h2>Your device</h2></div>
     <div class="rows">
-      <div class="row"><span>Bateri</span><span id="batLevel" class="na">Tidak disokong</span></div>
-      <div class="row"><span>Status cas</span><span id="batCharge" class="na">Tidak disokong</span></div>
-      <div class="row"><span>Tekanan CPU (sistem)</span><span id="pressure" class="na">Tidak disokong</span></div>
-      <div class="row"><span>Baseline sejuk</span><span id="baseline" class="na">Belum kalibrasi</span></div>
-      <div class="row"><span>Skrin sentiasa ON</span><span id="wake" class="na">—</span></div>
+      <div class="row"><span>Model</span><span id="d-model" class="na">Reading…</span></div>
+      <div class="row"><span>Operating system</span><span id="d-os" class="na">Reading…</span></div>
+      <div class="row"><span>Browser</span><span id="d-browser" class="na">Reading…</span></div>
+      <div class="row"><span>CPU cores</span><span id="d-cores" class="na">Reading…</span></div>
+      <div class="row"><span>CPU architecture</span><span id="d-arch" class="na">Reading…</span></div>
+      <div class="row"><span>RAM</span><span id="d-ram" class="na">Reading…</span></div>
+      <div class="row"><span>GPU</span><span id="d-gpu" class="na">Reading…</span></div>
+      <div class="row"><span>Graphics APIs</span><span id="d-gapi" class="na">Reading…</span></div>
+      <div class="row"><span>Screen</span><span id="d-screen" class="na">Reading…</span></div>
+      <div class="row"><span>Refresh rate</span><span id="d-hz" class="na">Measuring…</span></div>
+      <div class="row"><span>Display</span><span id="d-display" class="na">Reading…</span></div>
+      <div class="row"><span>Battery</span><span id="batLevel" class="na">Not reported</span></div>
+      <div class="row"><span>Charging</span><span id="batCharge" class="na">Not reported</span></div>
+      <div class="row"><span>Network</span><span id="d-net" class="na">Not reported</span></div>
+      <div class="row"><span>Browser storage</span><span id="d-storage" class="na">Reading…</span></div>
     </div>
   </section>
 
+  <!-- Hardware components (permission-based) -->
+  <section class="card">
+    <div class="card-head"><h2>Hardware components</h2><span id="scanPill" class="pill">Not scanned</span></div>
+    <p class="sub">Tap <b>Scan hardware</b>. Your phone will ask permission for motion sensors, NFC, camera, microphone and location. Deny any you like and the rest still works. Nothing is recorded, saved or sent anywhere.</p>
+    <button id="scanBtn" class="primary wide">Scan hardware</button>
+    <ul id="compList" class="comp"></ul>
+  </section>
+
   <details>
-    <summary>Macam mana ia berfungsi?</summary>
-    <p>Browser (Chrome/Safari) <b>tidak dibenarkan</b> membaca sensor suhu phone. Jadi ThermoCheck mengukur benda yang betul-betul buat game lag: <b>thermal throttling</b>.</p>
-    <p>Bila phone panas, sistem turunkan kelajuan CPU untuk sejukkan diri. ThermoCheck jalankan ujian CPU kecil setiap beberapa saat dan bandingkan dengan skor masa phone sejuk. <b>100% = laju penuh</b>. Kalau jatuh ke 70%, phone anda sedang throttle, sebab itu game lag.</p>
+    <summary>Why is there no °C temperature?</summary>
+    <p>Android and iOS <b>do not give websites access to temperature sensors</b>, even with permission. No such permission exists for browsers. Only native apps can read them.</p>
+    <p>So ThermoCheck measures what actually makes games lag: <b>thermal throttling</b>. When the phone gets hot, the system slows the CPU down. ThermoCheck runs a tiny CPU test every few seconds and compares it with your cool-phone score. <b>100% = full speed.</b> At 70%, the phone is throttling, which is why your game stutters.</p>
   </details>
 
   <details>
-    <summary>Cara guna untuk gamer</summary>
+    <summary>How to use it for gaming</summary>
     <ul>
-      <li><b>Sekali sahaja:</b> bila phone sejuk (belum main, tak cas), tekan <b>Kalibrasi</b>. Baseline disimpan dalam phone.</li>
-      <li><b>Lepas main game:</b> buka ThermoCheck. Bacaan terus keluar. Kalau &lt;75%, rehatkan phone.</li>
-      <li>Browser pause tab bila anda buka game, jadi website tak boleh pantau <i>semasa</i> game berjalan. Semak sebelum dan selepas main, atau semasa rehat antara match.</li>
-      <li>Tekan <b>Share → Add to Home Screen</b> (iPhone) atau <b>⋮ → Install app</b> (Android) supaya boleh buka macam app.</li>
+      <li><b>Once:</b> while the phone is cool (not gaming, not charging), tap <b>Calibrate</b>. The baseline is saved on this phone.</li>
+      <li><b>After gaming:</b> open ThermoCheck. The reading appears right away. Below 75%? Give the phone a break.</li>
+      <li>Browsers pause background tabs, so the site can't measure <i>while</i> a game is open. Check before and after playing, or between matches.</li>
+      <li>Tap <b>Share → Add to Home Screen</b> (iPhone) or <b>⋮ → Install app</b> (Android) to open it like an app.</li>
     </ul>
   </details>
 
   <details>
-    <summary>Tips kurangkan panas</summary>
+    <summary>Tips to reduce heat</summary>
     <ul>
-      <li>Jangan main sambil cas, sebab cas adalah punca panas nombor 1.</li>
-      <li>Buka casing phone masa main lama.</li>
-      <li>Turunkan graphics / FPS dalam setting game (contoh 60 → 40 FPS).</li>
-      <li>Kurangkan brightness dan tutup app background.</li>
-      <li>Elak main bawah matahari atau atas tilam/bantal.</li>
-      <li>Guna phone cooler (kipas clip-on) untuk sesi panjang.</li>
+      <li>Don't game while charging. It's the #1 cause of heat.</li>
+      <li>Take the case off for long sessions.</li>
+      <li>Lower graphics / FPS in the game settings (e.g. 60 → 40 FPS).</li>
+      <li>Lower brightness and close background apps.</li>
+      <li>Avoid direct sun, and don't play on a bed or pillow.</li>
+      <li>Use a clip-on phone cooler for long sessions.</li>
     </ul>
   </details>
 
-  <footer>Tiada login · Tiada data dihantar keluar · Semua berjalan dalam phone anda</footer>
+  <footer>No login · No data leaves your phone · Everything runs on-device</footer>
 </main>
 
 <script>
@@ -192,6 +235,9 @@
   const LS_KEY = 'thermocheck.baseline.v1';
 
   const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   const el = {
     pill: $('livePill'), pct: $('pct'), status: $('statusText'), hint: $('hint'),
     start: $('startBtn'), cal: $('calBtn'), gauge: $('gaugeVal'),
@@ -200,7 +246,18 @@
     baseline: $('baseline'), wake: $('wake'),
   };
 
-  // ---------- Benchmark worker (keeps main thread free so FPS reading stays honest) ----------
+  // Set a text value in an info row; muted = value unavailable / fallback
+  function info(id, text, muted = false) {
+    const e = $(id);
+    e.textContent = text;
+    e.classList.toggle('na', muted);
+  }
+
+  // =====================================================================
+  //  THERMAL THROTTLING MONITOR
+  // =====================================================================
+
+  // Benchmark worker (keeps main thread free so the FPS reading stays honest)
   const workerSrc = `
     onmessage = (e) => {
       const dur = e.data;
@@ -218,7 +275,6 @@
   worker.onmessage = e => { if (pending) { pending(e.data.score); pending = null; } };
   const probe = () => new Promise(res => { pending = res; worker.postMessage(PROBE_MS); });
 
-  // ---------- State ----------
   let baseline = loadBaseline();       // {score, date} from a cool calibration
   let sessionBest = 0;                 // fallback baseline when not calibrated
   let recent = [];                     // last few raw scores (for median smoothing)
@@ -240,13 +296,12 @@
   const refScore = () => baseline ? baseline.score : sessionBest;
 
   function level(pct) {
-    if (pct >= 90) return { name: 'Sejuk', color: 'var(--cool)', hint: 'Prestasi penuh. Selamat main!' };
-    if (pct >= 75) return { name: 'Suam', color: 'var(--warm)', hint: 'Phone mula panas. Masih OK, tapi perhatikan.' };
-    if (pct >= 60) return { name: 'Panas — Throttling', color: 'var(--hot)', hint: 'CPU diperlahankan. Game mungkin lag / FPS jatuh.' };
-    return { name: 'Sangat Panas', color: 'var(--crit)', hint: 'Throttle teruk! Rehatkan phone 5–10 minit.' };
+    if (pct >= 90) return { name: 'Cool', color: 'var(--cool)', hint: 'Full performance. Game on!' };
+    if (pct >= 75) return { name: 'Warm', color: 'var(--warm)', hint: 'Warming up. Still fine, but keep an eye on it.' };
+    if (pct >= 60) return { name: 'Hot — Throttling', color: 'var(--hot)', hint: 'CPU is being slowed down. Expect lag / FPS drops.' };
+    return { name: 'Critical', color: 'var(--crit)', hint: 'Heavy throttling! Rest the phone for 5–10 minutes.' };
   }
 
-  // ---------- Gauge ----------
   const ARC_LEN = el.gauge.getTotalLength();
   el.gauge.style.strokeDasharray = ARC_LEN;
   el.gauge.style.strokeDashoffset = ARC_LEN;
@@ -259,10 +314,9 @@
     el.gauge.style.strokeDashoffset = ARC_LEN * (1 - Math.min(pct, 100) / 100);
     el.hint.textContent = baseline
       ? lv.hint
-      : lv.hint + ' (Belum kalibrasi: bacaan berbanding skor terbaik sesi ini.)';
+      : lv.hint + ' (Not calibrated: compared with the best score this session.)';
   }
 
-  // ---------- Sampling loop ----------
   async function tick() {
     if (!running || busy || document.hidden) return;
     busy = true;
@@ -275,7 +329,7 @@
     const smooth = median(recent);
     if (smooth > sessionBest) sessionBest = smooth;
 
-    let pct = Math.min(100, (smooth / refScore()) * 100);
+    const pct = Math.min(100, (smooth / refScore()) * 100);
     history.push({ t: Date.now(), pct });
     if (history.length > HISTORY_MAX) history.shift();
     minPct = minPct === null ? pct : Math.min(minPct, pct);
@@ -288,7 +342,7 @@
 
   async function start() {
     running = true;
-    el.start.textContent = 'Berhenti';
+    el.start.textContent = 'Stop';
     el.start.classList.remove('primary');
     el.pill.textContent = 'Live';
     el.pill.classList.add('live');
@@ -300,26 +354,25 @@
   function stop() {
     running = false;
     clearInterval(timer);
-    el.start.textContent = 'Mula Pantau';
+    el.start.textContent = 'Start Monitoring';
     el.start.classList.add('primary');
-    el.pill.textContent = 'Berhenti';
+    el.pill.textContent = 'Stopped';
     el.pill.classList.remove('live');
     releaseWake();
   }
 
   el.start.addEventListener('click', () => running ? stop() : start());
 
-  // ---------- Calibration ----------
   el.cal.addEventListener('click', async () => {
-    if (!confirm('Kalibrasi hanya bila phone SEJUK (belum main game, tidak dicas, sudah rehat beberapa minit). Teruskan?')) return;
+    if (!confirm('Only calibrate while the phone is COOL (not gaming, not charging, rested for a few minutes). Continue?')) return;
     const wasRunning = running;
     if (wasRunning) stop();
     el.cal.disabled = el.start.disabled = true;
     const samples = [];
     for (let i = 0; i < 6; i++) {
-      el.hint.textContent = `Mengkalibrasi... ${i + 1}/6`;
+      el.hint.textContent = `Calibrating... ${i + 1}/6`;
       samples.push(await probe());
-      await new Promise(r => setTimeout(r, 400));
+      await sleep(400);
     }
     // Discard the first (JIT warm-up), keep the best of the rest
     baseline = { score: Math.max(...samples.slice(1)), date: new Date().toISOString() };
@@ -327,25 +380,30 @@
     recent = []; history = []; minPct = null;
     showBaseline();
     el.cal.disabled = el.start.disabled = false;
-    el.hint.textContent = 'Kalibrasi siap! Baseline disimpan dalam phone ini.';
+    el.hint.textContent = 'Calibration done! Baseline saved on this phone.';
     drawChart();
     if (wasRunning) start();
   });
 
   function showBaseline() {
     if (!baseline) return;
-    const d = new Date(baseline.date);
-    el.baseline.textContent = `${Math.round(baseline.score)} · ${d.toLocaleDateString()}`;
-    el.baseline.classList.remove('na');
+    info('baseline', `${Math.round(baseline.score)} · ${new Date(baseline.date).toLocaleDateString()}`);
   }
   showBaseline();
 
-  // ---------- FPS meter ----------
-  let frames = 0, fpsT0 = performance.now();
+  // ---------- FPS meter + refresh-rate detection ----------
+  const COMMON_HZ = [30, 48, 50, 60, 72, 90, 100, 120, 144, 165, 240];
+  let frames = 0, fpsT0 = performance.now(), maxFps = 0;
   (function loop(now) {
     frames++;
     if (now - fpsT0 >= 1000) {
-      el.fps.textContent = Math.round(frames * 1000 / (now - fpsT0));
+      const fps = Math.round(frames * 1000 / (now - fpsT0));
+      el.fps.textContent = fps;
+      if (!document.hidden && fps > maxFps) {
+        maxFps = fps;
+        const hz = COMMON_HZ.find(h => Math.abs(h - fps) <= 4) || fps;
+        info('d-hz', `${hz} Hz` + (isIOS && hz === 60 ? ' (Safari caps web pages at 60)' : ''));
+      }
       frames = 0; fpsT0 = now;
     }
     requestAnimationFrame(loop);
@@ -365,14 +423,12 @@
     const lo = 40, hi = 100;                          // y range in %
     const y = p => h - ((Math.max(lo, Math.min(hi, p)) - lo) / (hi - lo)) * (h - 8) - 4;
 
-    // zone bands
     [[90, 100, '--cool'], [75, 90, '--warm'], [60, 75, '--hot'], [lo, 60, '--crit']].forEach(([a, b, v]) => {
       ctx.fillStyle = c(v); ctx.globalAlpha = 0.08;
       ctx.fillRect(0, y(b), w, y(a) - y(b));
     });
     ctx.globalAlpha = 1;
 
-    // gridlines
     ctx.strokeStyle = c('--line'); ctx.lineWidth = 1;
     ctx.fillStyle = c('--muted'); ctx.font = '11px system-ui';
     [100, 90, 75, 60].forEach(p => {
@@ -382,7 +438,7 @@
 
     if (history.length < 2) {
       ctx.fillStyle = c('--muted'); ctx.textAlign = 'center';
-      ctx.fillText('Data akan muncul bila pemantauan bermula', w / 2, h / 2);
+      ctx.fillText('Data appears once monitoring starts', w / 2, h / 2);
       ctx.textAlign = 'start';
       return;
     }
@@ -401,33 +457,16 @@
   window.addEventListener('resize', drawChart);
   drawChart();
 
-  // ---------- Battery (Chrome Android only; iOS Safari does not expose it) ----------
-  if (navigator.getBattery) {
-    navigator.getBattery().then(b => {
-      const upd = () => {
-        el.batLevel.textContent = Math.round(b.level * 100) + '%';
-        el.batLevel.classList.remove('na');
-        el.batCharge.textContent = b.charging ? '⚡ Sedang dicas (menambah panas!)' : 'Tidak dicas';
-        el.batCharge.style.color = b.charging ? 'var(--hot)' : '';
-        el.batCharge.classList.remove('na');
-      };
-      upd();
-      b.addEventListener('levelchange', upd);
-      b.addEventListener('chargingchange', upd);
-    }).catch(() => {});
-  }
-
-  // ---------- Compute Pressure API (system-reported thermal/CPU pressure, where available) ----------
+  // ---------- Compute Pressure API (OS-reported CPU pressure) ----------
   if ('PressureObserver' in window) {
-    const map = { nominal: ['Normal', 'var(--cool)'], fair: ['Sederhana', 'var(--warm)'],
-                  serious: ['Tinggi', 'var(--hot)'], critical: ['Kritikal', 'var(--crit)'] };
+    const map = { nominal: ['Normal', 'var(--cool)'], fair: ['Moderate', 'var(--warm)'],
+                  serious: ['High', 'var(--hot)'], critical: ['Critical', 'var(--crit)'] };
     try {
       const po = new PressureObserver(records => {
         const st = records[records.length - 1].state;
         const [label, color] = map[st] || [st, ''];
-        el.pressure.textContent = label;
+        info('pressure', label);
         el.pressure.style.color = color;
-        el.pressure.classList.remove('na');
       });
       po.observe('cpu', { sampleInterval: 2000 }).catch(() => {});
     } catch {}
@@ -435,18 +474,474 @@
 
   // ---------- Keep screen awake while monitoring ----------
   async function requestWake() {
-    if (!('wakeLock' in navigator)) { el.wake.textContent = 'Tidak disokong'; return; }
+    if (!('wakeLock' in navigator)) { info('wake', 'Not supported', true); return; }
     try {
       wakeLock = await navigator.wakeLock.request('screen');
-      el.wake.textContent = 'Ya'; el.wake.classList.remove('na');
-      wakeLock.addEventListener('release', () => { if (!running) el.wake.textContent = 'Tidak'; });
-    } catch { el.wake.textContent = 'Tidak'; }
+      info('wake', 'Yes');
+      wakeLock.addEventListener('release', () => { if (!running) info('wake', 'No', true); });
+    } catch { info('wake', 'No', true); }
   }
   function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
 
-  // When user returns from a game, re-acquire wake lock and sample immediately
+  // When the user returns from a game, re-acquire wake lock and sample immediately
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && running) { requestWake(); tick(); }
+  });
+
+  // =====================================================================
+  //  DEVICE INFO (no permission needed)
+  // =====================================================================
+
+  function browserName(hints) {
+    const brands = (hints.fullVersionList || navigator.userAgentData?.brands || [])
+      .filter(b => !/Not.?A.?Brand/i.test(b.brand));
+    const pick = brands.find(b => b.brand !== 'Chromium') || brands[0];
+    if (pick) return `${pick.brand} ${String(pick.version).split('.')[0]}`;
+    const known = [['Samsung Internet', /SamsungBrowser\/(\d+)/], ['Chrome', /CriOS\/(\d+)/],
+                   ['Firefox', /FxiOS\/(\d+)/], ['Edge', /EdgiOS\/(\d+)/], ['Firefox', /Firefox\/(\d+)/],
+                   ['Safari', /Version\/([\d.]+).*Safari/]];
+    for (const [name, re] of known) { const m = ua.match(re); if (m) return `${name} ${m[1]}`; }
+    return 'Unknown';
+  }
+
+  function readGPU() {
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) return null;
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      let renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+      let vendor = ext ? gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+      // "ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)" -> "Adreno (TM) 740"
+      const angle = renderer.match(/^ANGLE \([^,]+, (.+?)(?:, [^,]+)?\)$/);
+      if (angle) renderer = angle[1].replace(/ Direct3D.*$/, '');
+      renderer = renderer.replace(/\s*\(0x[0-9a-f]+\)/i, '');
+      vendor = (vendor.match(/\((.+)\)/) || [, vendor])[1];   // "Google Inc. (Intel)" -> "Intel"
+      const webgl2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+      return { renderer, vendor, webgl2, maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE) };
+    } catch { return null; }
+  }
+
+  async function readDevice() {
+    let hints = {};
+    if (navigator.userAgentData?.getHighEntropyValues) {
+      try {
+        hints = await navigator.userAgentData.getHighEntropyValues(
+          ['model', 'platform', 'platformVersion', 'architecture', 'bitness', 'fullVersionList']);
+      } catch {}
+    }
+
+    // Model
+    if (hints.model) info('d-model', hints.model);
+    else if (isIOS) info('d-model', (/iPad/.test(ua) || /Macintosh/.test(ua) ? 'iPad' : 'iPhone') + ' (Apple hides the exact model)');
+    else if (/Android/.test(ua)) info('d-model', 'Android device (model not reported)', true);
+    else info('d-model', 'Not reported (desktop browser?)', true);
+
+    // OS
+    const iosVer = ua.match(/OS (\d+)_(\d+)(?:_(\d+))? like Mac/);
+    if (iosVer) info('d-os', `iOS ${iosVer[1]}.${iosVer[2]}${iosVer[3] ? '.' + iosVer[3] : ''}`);
+    else if (hints.platform) {
+      const v = (hints.platformVersion || '').replace(/(\.0)+$/, '');
+      info('d-os', `${hints.platform}${v ? ' ' + v : ''}`);
+    } else {
+      const a = ua.match(/Android ([\d.]+)/);
+      info('d-os', a ? `Android ${a[1]}` : (navigator.platform || 'Unknown'), !a);
+    }
+
+    info('d-browser', browserName(hints));
+
+    // CPU
+    const cores = navigator.hardwareConcurrency;
+    info('d-cores', cores ? `${cores} cores` : 'Not reported', !cores);
+    if (hints.architecture) info('d-arch', `${hints.architecture.toUpperCase()}${hints.bitness ? ' ' + hints.bitness + '-bit' : ''}`);
+    else info('d-arch', 'Not reported by browser', true);
+
+    // RAM (Chrome only; rounded, and capped at 8 GB on phones)
+    const mem = navigator.deviceMemory;
+    if (mem) info('d-ram', `≈ ${mem} GB${mem === 8 ? ' or more' : ''} (rounded by browser)`);
+    else info('d-ram', isIOS ? 'Not reported by iOS' : 'Not reported', true);
+
+    // GPU
+    const gpu = readGPU();
+    if (gpu) info('d-gpu', gpu.vendor && !gpu.renderer.toLowerCase().includes(gpu.vendor.split(' ')[0].toLowerCase())
+      ? `${gpu.renderer} (${gpu.vendor})` : gpu.renderer);
+    else info('d-gpu', 'WebGL unavailable', true);
+
+    const apis = [];
+    if (gpu) apis.push(gpu.webgl2 ? 'WebGL 2' : 'WebGL 1', `max texture ${gpu.maxTex}px`);
+    info('d-gapi', apis.join(' · ') || 'None', !apis.length);
+    if (navigator.gpu) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        const ai = adapter && (adapter.info || (adapter.requestAdapterInfo && await adapter.requestAdapterInfo()));
+        if (adapter) {
+          const desc = ai ? [ai.vendor, ai.architecture].filter(Boolean).join(' ') : '';
+          apis.push('WebGPU' + (desc ? ` (${desc})` : ''));
+          info('d-gapi', apis.join(' · '));
+        }
+      } catch {}
+    }
+
+    // Screen
+    const dpr = window.devicePixelRatio || 1;
+    const sw = Math.round(screen.width * dpr), sh = Math.round(screen.height * dpr);
+    info('d-screen', `${Math.min(sw, sh)} × ${Math.max(sw, sh)} px · ${+dpr.toFixed(2)}× density`);
+    const mq = q => matchMedia(q).matches;
+    const gamut = mq('(color-gamut: rec2020)') ? 'Rec.2020' : mq('(color-gamut: p3)') ? 'Wide color (P3)' : 'sRGB';
+    info('d-display', `${gamut} · ${mq('(dynamic-range: high)') ? 'HDR' : 'SDR'} · ${navigator.maxTouchPoints || 0}-point touch`);
+
+    // Network (Chrome Android)
+    const cn = navigator.connection;
+    if (cn) {
+      const upd = () => {
+        const parts = [];
+        if (cn.type && cn.type !== 'unknown') parts.push(cn.type === 'cellular' ? 'Mobile data' : cn.type === 'wifi' ? 'Wi-Fi' : cn.type);
+        if (cn.effectiveType) parts.push(cn.effectiveType.toUpperCase() + '-class');
+        if (cn.downlink) parts.push(`~${cn.downlink} Mbps`);
+        if (cn.rtt) parts.push(`${cn.rtt} ms`);
+        info('d-net', parts.join(' · ') || 'Unknown', !parts.length);
+      };
+      upd();
+      cn.addEventListener?.('change', upd);
+    } else info('d-net', isIOS ? 'Not reported by iOS' : 'Not reported', true);
+
+    // Storage the browser is allowed to use (not total disk size)
+    if (navigator.storage?.estimate) {
+      try {
+        const { quota } = await navigator.storage.estimate();
+        info('d-storage', quota ? `~${(quota / 1e9).toFixed(1)} GB available to browser` : 'Not reported', !quota);
+      } catch { info('d-storage', 'Not reported', true); }
+    } else info('d-storage', 'Not reported', true);
+  }
+  readDevice();
+
+  // Battery (Chrome Android only; iOS Safari does not expose it)
+  if (navigator.getBattery) {
+    navigator.getBattery().then(b => {
+      const fmt = s => s === Infinity || !s ? '' : ` · ${Math.floor(s / 3600)}h ${Math.round(s % 3600 / 60)}m`;
+      const upd = () => {
+        info('batLevel', Math.round(b.level * 100) + '%' + (b.charging ? '' : fmt(b.dischargingTime) && fmt(b.dischargingTime) + ' left'));
+        info('batCharge', b.charging ? '⚡ Charging (adds heat!)' + (fmt(b.chargingTime) && fmt(b.chargingTime) + ' to full') : 'Not charging');
+        el.batCharge.style.color = b.charging ? 'var(--hot)' : '';
+      };
+      upd();
+      ['levelchange', 'chargingchange', 'chargingtimechange', 'dischargingtimechange'].forEach(ev => b.addEventListener(ev, upd));
+    }).catch(() => {});
+  } else if (isIOS) {
+    info('batLevel', 'Not reported by iOS', true);
+    info('batCharge', 'Not reported by iOS', true);
+  }
+
+  // =====================================================================
+  //  HARDWARE COMPONENTS (permission-based scan)
+  // =====================================================================
+
+  const COMPONENTS = [
+    ['camera', '📷', 'Cameras'],
+    ['mic', '🎙️', 'Microphones'],
+    ['speaker', '🔊', 'Audio outputs'],
+    ['accel', '📐', 'Accelerometer'],
+    ['gyro', '🌀', 'Gyroscope'],
+    ['compass', '🧭', 'Compass'],
+    ['gps', '📍', 'GPS / Location'],
+    ['nfc', '📶', 'NFC'],
+    ['bt', '🔵', 'Bluetooth'],
+    ['vibe', '📳', 'Vibration motor'],
+    ['touch', '👆', 'Touchscreen'],
+    ['pad', '🎮', 'Game controller'],
+  ];
+  const CHIP = { ok: 'Detected', no: 'Not found', denied: 'Denied', wait: 'Checking…', idle: 'Needs scan', na: 'Unsupported' };
+
+  const list = $('compList');
+  for (const [key, ico, name] of COMPONENTS) {
+    const li = document.createElement('li');
+    li.id = 'c-' + key;
+    li.innerHTML = `<span class="ico">${ico}</span><div><div class="name"></div><div class="detail"></div></div><span class="chip"></span>`;
+    li.querySelector('.name').textContent = name;
+    list.appendChild(li);
+  }
+
+  // detail: string or array of lines (always rendered as text, never HTML)
+  function setComp(key, state, detail, extra, chipText) {
+    const li = $('c-' + key);
+    const chip = li.querySelector('.chip');
+    chip.className = 'chip ' + state;
+    chip.textContent = chipText || CHIP[state];
+    const d = li.querySelector('.detail');
+    d.replaceChildren(...[].concat(detail || []).map(t => { const x = document.createElement('div'); x.textContent = t; return x; }));
+    if (extra) d.appendChild(extra);
+  }
+
+  const permIdle = 'Tap Scan hardware to allow';
+  ['camera', 'mic', 'speaker', 'accel', 'gyro', 'compass', 'gps'].forEach(k => setComp(k, 'idle', permIdle));
+
+  // ----- Passive checks (no prompt) -----
+  function passiveScan() {
+    // Touchscreen
+    const tp = navigator.maxTouchPoints || 0;
+    tp > 0 ? setComp('touch', 'ok', `${tp}-point multi-touch`) : setComp('touch', 'no', 'No touch input reported');
+
+    // Vibration motor
+    if ('vibrate' in navigator) {
+      const b = document.createElement('button');
+      b.className = 'mini'; b.textContent = 'Test vibration';
+      b.onclick = () => navigator.vibrate([200, 100, 200]);
+      setComp('vibe', 'ok', 'Supported. Tap Test and you should feel it.', b, 'Supported');
+    } else setComp('vibe', 'na', isIOS ? 'iPhone does not let websites use the vibration motor' : 'Not supported by this browser');
+
+    // Bluetooth adapter
+    if (navigator.bluetooth?.getAvailability) {
+      navigator.bluetooth.getAvailability()
+        .then(ok => ok ? setComp('bt', 'ok', 'Bluetooth adapter present')
+                       : setComp('bt', 'no', 'Adapter off or not present'))
+        .catch(() => setComp('bt', 'na', 'Could not check'));
+    } else setComp('bt', 'na', isIOS ? 'iOS browsers do not expose Bluetooth' : 'Not supported by this browser');
+
+    // NFC (needs permission to confirm the chip)
+    if ('NDEFReader' in window) setComp('nfc', 'idle', permIdle);
+    else setComp('nfc', 'na', isIOS ? 'iOS does not let websites use NFC' : 'Not supported by this browser');
+
+    updatePads();
+  }
+
+  // ----- Game controllers -----
+  function updatePads() {
+    if (!navigator.getGamepads) return setComp('pad', 'na', 'Not supported by this browser');
+    const pads = [...navigator.getGamepads()].filter(Boolean);
+    if (pads.length) setComp('pad', 'ok', pads.map(p => `${p.id.replace(/\s*\(.*?Vendor.*?\)/i, '')} · ${p.buttons.length} buttons`), null, `${pads.length} connected`);
+    else setComp('pad', 'idle', 'None connected. Plug in or pair one, then press a button.', null, 'None');
+  }
+  window.addEventListener('gamepadconnected', updatePads);
+  window.addEventListener('gamepaddisconnected', updatePads);
+
+  passiveScan();
+
+  // ----- Motion sensors (accelerometer, gyroscope, compass) -----
+  const motion = { acc: null, rot: null, hz: null, heading: null, listening: false };
+  const fmt1 = v => (v >= 0 ? ' ' : '') + v.toFixed(1);
+  const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+  function onMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (a && a.x != null) motion.acc = a;
+    const r = e.rotationRate;
+    if (r && r.alpha != null) motion.rot = r;
+    if (e.interval) motion.hz = Math.round(1000 / (e.interval < 1 ? e.interval * 1000 : e.interval));  // older iOS reports seconds
+  }
+  function onOrient(e) {
+    if (e.webkitCompassHeading != null) motion.heading = e.webkitCompassHeading;           // iOS
+    else if (e.absolute && e.alpha != null) motion.heading = (360 - e.alpha) % 360;         // Android
+  }
+  function paintMotion() {
+    const hz = motion.hz ? ` · ${motion.hz} Hz` : '';
+    if (motion.acc) setComp('accel', 'ok', `x${fmt1(motion.acc.x)}  y${fmt1(motion.acc.y)}  z${fmt1(motion.acc.z)} m/s²${hz}`, null, 'Live');
+    if (motion.rot) setComp('gyro', 'ok', `α${fmt1(motion.rot.alpha)}  β${fmt1(motion.rot.beta)}  γ${fmt1(motion.rot.gamma)} °/s${hz}`, null, 'Live');
+    if (motion.heading != null) {
+      const h = Math.round(motion.heading);
+      setComp('compass', 'ok', `Heading ${h}° ${DIRS[Math.round(h / 45) % 8]}`, null, 'Live');
+    }
+  }
+
+  // Must be called synchronously inside the tap handler (iOS requires a user gesture)
+  function scanMotion() {
+    if (!('DeviceMotionEvent' in window)) {
+      ['accel', 'gyro', 'compass'].forEach(k => setComp(k, 'na', 'Not supported by this browser'));
+      return Promise.resolve();
+    }
+    ['accel', 'gyro', 'compass'].forEach(k => setComp(k, 'wait', 'Waiting for permission…'));
+    const asks = [];
+    if (typeof DeviceMotionEvent.requestPermission === 'function') asks.push(DeviceMotionEvent.requestPermission());
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') asks.push(DeviceOrientationEvent.requestPermission());
+
+    return Promise.all(asks).then(async results => {
+      if (results.some(r => r !== 'granted')) {
+        ['accel', 'gyro', 'compass'].forEach(k => setComp(k, 'denied', 'Permission denied. Allow Motion & Orientation access in browser settings.'));
+        return;
+      }
+      if (!motion.listening) {
+        motion.listening = true;
+        window.addEventListener('devicemotion', onMotion);
+        window.addEventListener('deviceorientationabsolute', onOrient);
+        window.addEventListener('deviceorientation', onOrient);
+        setInterval(paintMotion, 250);
+      }
+      ['accel', 'gyro', 'compass'].forEach(k => setComp(k, 'wait', 'Reading sensor…'));
+      await sleep(2500);
+      if (!motion.acc) setComp('accel', 'no', 'No data from sensor');
+      if (!motion.rot) setComp('gyro', 'no', 'No data from sensor');
+      if (motion.heading == null) setComp('compass', 'no', 'No magnetometer data');
+    }).catch(() => {
+      ['accel', 'gyro', 'compass'].forEach(k => setComp(k, 'denied', 'Permission denied'));
+    });
+  }
+
+  // ----- NFC -----
+  async function scanNFC() {
+    if (!('NDEFReader' in window)) return;
+    setComp('nfc', 'wait', 'Waiting for permission…');
+    const ac = new AbortController();
+    try {
+      await new NDEFReader().scan({ signal: ac.signal });
+      setComp('nfc', 'ok', 'NFC chip present and switched on');
+    } catch (e) {
+      if (e.name === 'NotAllowedError') setComp('nfc', 'denied', 'Permission denied');
+      else if (e.name === 'NotReadableError') setComp('nfc', 'no', 'NFC is switched off (or missing). Turn it on in Settings.');
+      else if (e.name === 'NotSupportedError') setComp('nfc', 'no', 'No NFC hardware in this phone');
+      else setComp('nfc', 'no', e.message || e.name);
+    } finally { ac.abort(); }
+  }
+
+  // ----- Cameras -----
+  const stopStream = s => s && s.getTracks().forEach(t => t.stop());
+
+  function camLabel(dev, cap, i) {
+    const f = (cap.facingMode && cap.facingMode[0]) || '';
+    if (f === 'user' || /front|user|facing front/i.test(dev.label)) return 'Front camera';
+    if (f === 'environment' || /back|rear|environment|facing back/i.test(dev.label)) {
+      if (/ultra|wide/i.test(dev.label)) return 'Back camera (wide)';
+      if (/tele/i.test(dev.label)) return 'Back camera (telephoto)';
+      return 'Back camera';
+    }
+    return dev.label || `Camera ${i + 1}`;
+  }
+
+  async function scanCameras() {
+    if (!navigator.mediaDevices?.getUserMedia) return setComp('camera', 'na', 'Not supported by this browser');
+    setComp('camera', 'wait', 'Waiting for permission…');
+    try { stopStream(await navigator.mediaDevices.getUserMedia({ video: true })); }
+    catch (e) {
+      return e.name === 'NotFoundError' || e.name === 'OverconstrainedError'
+        ? setComp('camera', 'no', 'No camera found')
+        : setComp('camera', 'denied', 'Permission denied');
+    }
+    setComp('camera', 'wait', 'Reading each camera…');
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const lines = [];
+    for (const [i, dev] of cams.entries()) {
+      let s;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: dev.deviceId } } });
+        const track = s.getVideoTracks()[0];
+        const cap = track.getCapabilities ? track.getCapabilities() : {};
+        const parts = [camLabel(dev, cap, i)];
+        // Real photo resolution where the browser exposes it (Chrome), else max video size
+        let photo = null;
+        if ('ImageCapture' in window) {
+          try {
+            const pc = await new ImageCapture(track).getPhotoCapabilities();
+            if (pc.imageWidth?.max) photo = pc.imageWidth.max * pc.imageHeight.max / 1e6;
+          } catch {}
+        }
+        if (photo) parts.push(`${photo >= 10 ? Math.round(photo) : photo.toFixed(1)} MP photo`);
+        const vw = cap.width?.max, vh = cap.height?.max;
+        if (vw && vh) {
+          const long = Math.max(vw, vh);
+          parts.push(long >= 3840 ? '4K video' : long >= 2560 ? '1440p video' : long >= 1920 ? '1080p video' : `${vw}×${vh} video`);
+        }
+        if (cap.frameRate?.max) parts.push(`${Math.round(cap.frameRate.max)} fps`);
+        if (cap.torch) parts.push('flash');
+        if (cap.zoom?.max > 1) parts.push(`${+cap.zoom.max.toFixed(1)}× zoom`);
+        lines.push(parts.join(' · '));
+      } catch {
+        lines.push(`${dev.label || 'Camera ' + (i + 1)} · busy or restricted`);
+      } finally { stopStream(s); }
+    }
+    cams.length
+      ? setComp('camera', 'ok', lines, null, `${cams.length} found`)
+      : setComp('camera', 'no', 'No camera found');
+  }
+
+  // ----- Microphones + audio outputs -----
+  async function scanAudio() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setComp('mic', 'na', 'Not supported by this browser');
+      setComp('speaker', 'na', 'Not supported by this browser');
+      return;
+    }
+    setComp('mic', 'wait', 'Waiting for permission…');
+    let s;
+    try { s = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) {
+      setComp('mic', e.name === 'NotFoundError' ? 'no' : 'denied', e.name === 'NotFoundError' ? 'No microphone found' : 'Permission denied');
+      setComp('speaker', 'denied', 'Needs microphone permission to list outputs');
+      return;
+    }
+    try {
+      setComp('mic', 'wait', 'Listening for 1 second…');
+      const track = s.getAudioTracks()[0];
+      const set = track.getSettings ? track.getSettings() : {};
+      // Short level check to confirm the mic actually picks up sound
+      let peak = 0;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const actx = new AC();
+        const an = actx.createAnalyser();
+        actx.createMediaStreamSource(s).connect(an);
+        const buf = new Float32Array(an.fftSize);
+        const t0 = performance.now();
+        while (performance.now() - t0 < 1000) {
+          an.getFloatTimeDomainData(buf);
+          for (const v of buf) peak = Math.max(peak, Math.abs(v));
+          await sleep(50);
+        }
+        actx.close();
+      } catch {}
+
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      const real = d => d.deviceId !== 'default' && d.deviceId !== 'communications';
+      const mics = devs.filter(d => d.kind === 'audioinput' && real(d));
+      const outs = devs.filter(d => d.kind === 'audiooutput' && real(d));
+
+      const lines = [];
+      lines.push(peak > 0.002 ? 'Signal detected, mic is working' : 'No sound picked up (quiet room or muted?)');
+      const spec = [set.sampleRate && `${Math.round(set.sampleRate / 1000)} kHz`, set.channelCount && `${set.channelCount} ch`].filter(Boolean);
+      if (spec.length) lines.push(spec.join(' · '));
+      mics.slice(0, 4).forEach(m => m.label && lines.push(m.label));
+      setComp('mic', 'ok', lines, null, `${Math.max(mics.length, 1)} found`);
+
+      if (outs.length) setComp('speaker', 'ok', outs.slice(0, 4).map(o => o.label || 'Audio output'), null, `${outs.length} found`);
+      else setComp('speaker', 'na', isIOS ? 'Safari does not list audio outputs' : 'Browser does not list audio outputs');
+    } finally { stopStream(s); }
+  }
+
+  // ----- GPS / location (coordinates are never shown or stored) -----
+  function scanLocation() {
+    if (!navigator.geolocation) { setComp('gps', 'na', 'Not supported by this browser'); return Promise.resolve(); }
+    setComp('gps', 'wait', 'Waiting for permission / satellite fix…');
+    return new Promise(res => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        const c = pos.coords;
+        const acc = Math.round(c.accuracy);
+        setComp('gps', 'ok', [
+          `Fix acquired · accuracy ±${acc} m${acc <= 30 ? ' (GPS-grade)' : ' (Wi-Fi / cell estimate)'}`,
+          c.altitude != null ? 'Altitude available (satellite GPS)' : 'No altitude (GPS may still be warming up)',
+          'Your coordinates are not shown or saved',
+        ]);
+        res();
+      }, err => {
+        if (err.code === 1) setComp('gps', 'denied', 'Permission denied');
+        else if (err.code === 3) setComp('gps', 'no', 'Timed out. Go near a window or outdoors and scan again.');
+        else setComp('gps', 'no', 'Location unavailable (is Location switched on?)');
+        res();
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    });
+  }
+
+  // ----- Scan button -----
+  const scanBtn = $('scanBtn'), scanPill = $('scanPill');
+  scanBtn.addEventListener('click', async () => {
+    scanBtn.disabled = true;
+    scanPill.textContent = 'Scanning…';
+    const motionDone = scanMotion();   // first: iOS needs this inside the tap
+    await scanNFC();                   // early: NFC prompt also wants a recent tap
+    await scanCameras();
+    await scanAudio();
+    await scanLocation();
+    await motionDone;
+    passiveScan();
+    scanPill.textContent = 'Scanned ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    scanBtn.textContent = 'Scan again';
+    scanBtn.disabled = false;
   });
 
   // ---------- Offline / installable ----------

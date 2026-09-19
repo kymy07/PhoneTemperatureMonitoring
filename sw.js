@@ -1,5 +1,5 @@
 // Cache app shell so ThermoCheck works offline after first visit
-const CACHE = 'thermocheck-v1';
+const CACHE = 'thermocheck-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {

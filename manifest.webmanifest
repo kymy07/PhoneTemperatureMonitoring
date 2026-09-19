@@ -1,7 +1,7 @@
 {
-  "name": "ThermoCheck – Pantau Panas Phone",
+  "name": "ThermoCheck – Phone Thermal & Hardware Monitor",
   "short_name": "ThermoCheck",
-  "description": "Kesan thermal throttling phone anda. Tiada login.",
+  "description": "Detect thermal throttling and scan your phone hardware. No login.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
