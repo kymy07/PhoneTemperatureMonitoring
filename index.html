@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f17">
+<meta name="description" content="Pantau thermal throttling phone anda (Android & iPhone) terus dari browser. Tiada login.">
+<title>ThermoCheck</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root {
+    --bg: #0b0f17;
+    --card: #131a26;
+    --card-2: #1a2332;
+    --line: #253046;
+    --text: #e8edf5;
+    --muted: #8a97ad;
+    --cool: #22c55e;
+    --warm: #eab308;
+    --hot: #f97316;
+    --crit: #ef4444;
+    --accent: #38bdf8;
+    --status: var(--muted);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    -webkit-tap-highlight-color: transparent;
+  }
+  main { max-width: 560px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  main > * { min-width: 0; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .2px; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--card-2); color: var(--muted); border: 1px solid var(--line); white-space: nowrap; }
+  .pill.live { color: var(--cool); border-color: color-mix(in srgb, var(--cool) 40%, transparent); }
+  .pill.live::before { content: "● "; animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  /* Gauge */
+  .gauge-wrap { position: relative; display: grid; place-items: center; padding-top: 4px; }
+  .gauge { width: 100%; max-width: 300px; height: auto; display: block; }
+  .gauge .track { stroke: var(--card-2); }
+  .gauge .val { stroke: var(--status); transition: stroke-dashoffset .8s ease, stroke .4s; }
+  .gauge-center { position: absolute; top: 56%; left: 0; right: 0; text-align: center; transform: translateY(-50%); }
+  .big { font-size: 52px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 22px; font-weight: 600; color: var(--muted); }
+  .status { margin-top: 6px; font-size: 18px; font-weight: 700; color: var(--status); }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 4px 0 0; min-height: 20px; }
+
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  button {
+    font: inherit; font-weight: 600; border-radius: 12px; padding: 12px; border: 1px solid var(--line);
+    background: var(--card-2); color: var(--text); cursor: pointer; min-height: 46px;
+  }
+  button.primary { background: var(--accent); color: #04121c; border-color: transparent; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:active:not(:disabled) { transform: scale(.98); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--card-2); border-radius: 12px; padding: 10px; min-width: 0; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  canvas#chart { width: 100%; max-width: 100%; height: 160px; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+  .rows { display: grid; gap: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row span:first-child { color: var(--muted); white-space: nowrap; }
+  .row span:last-child { text-align: right; font-weight: 600; }
+  .na { color: var(--muted); font-weight: 400 !important; font-style: italic; }
+
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p, details li { color: #c6cfdd; font-size: 14px; }
+  details ul { padding-left: 18px; margin: 8px 0 0; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Thermo<span>Check</span></h1>
+    <span id="livePill" class="pill">Berhenti</span>
+  </header>
+
+  <!-- Main gauge -->
+  <section class="card">
+    <div class="gauge-wrap">
+      <svg class="gauge" viewBox="0 0 200 130" aria-hidden="true">
+        <path class="track" d="M20 110 A80 80 0 1 1 180 110" fill="none" stroke-width="14" stroke-linecap="round"/>
+        <path id="gaugeVal" class="val" d="M20 110 A80 80 0 1 1 180 110" fill="none" stroke-width="14" stroke-linecap="round"/>
+      </svg>
+      <div class="gauge-center">
+        <div class="big"><span id="pct">--</span><small>%</small></div>
+        <div id="statusText" class="status">Sedia</div>
+      </div>
+    </div>
+    <p id="hint" class="hint">Tekan <b>Mula Pantau</b>. Kalibrasi masa phone sejuk untuk bacaan paling tepat.</p>
+    <div class="btns">
+      <button id="startBtn" class="primary">Mula Pantau</button>
+      <button id="calBtn">Kalibrasi (Sejuk)</button>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="card">
+    <h2>Prestasi sekarang</h2>
+    <div class="stats">
+      <div class="stat"><b id="fps">--</b><span>FPS skrin</span></div>
+      <div class="stat"><b id="score">--</b><span>Skor CPU</span></div>
+      <div class="stat"><b id="minPct">--</b><span>Paling rendah</span></div>
+    </div>
+  </section>
+
+  <!-- Chart -->
+  <section class="card">
+    <h2>Sejarah prestasi (10 minit)</h2>
+    <canvas id="chart"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--cool)"></i>Sejuk ≥90%</span>
+      <span><i style="background:var(--warm)"></i>Suam 75–89%</span>
+      <span><i style="background:var(--hot)"></i>Panas 60–74%</span>
+      <span><i style="background:var(--crit)"></i>Sangat panas &lt;60%</span>
+    </div>
+  </section>
+
+  <!-- Device sensors -->
+  <section class="card">
+    <h2>Info peranti</h2>
+    <div class="rows">
+      <div class="row"><span>Bateri</span><span id="batLevel" class="na">Tidak disokong</span></div>
+      <div class="row"><span>Status cas</span><span id="batCharge" class="na">Tidak disokong</span></div>
+      <div class="row"><span>Tekanan CPU (sistem)</span><span id="pressure" class="na">Tidak disokong</span></div>
+      <div class="row"><span>Baseline sejuk</span><span id="baseline" class="na">Belum kalibrasi</span></div>
+      <div class="row"><span>Skrin sentiasa ON</span><span id="wake" class="na">—</span></div>
+    </div>
+  </section>
+
+  <details>
+    <summary>Macam mana ia berfungsi?</summary>
+    <p>Browser (Chrome/Safari) <b>tidak dibenarkan</b> membaca sensor suhu phone. Jadi ThermoCheck mengukur benda yang betul-betul buat game lag: <b>thermal throttling</b>.</p>
+    <p>Bila phone panas, sistem turunkan kelajuan CPU untuk sejukkan diri. ThermoCheck jalankan ujian CPU kecil setiap beberapa saat dan bandingkan dengan skor masa phone sejuk. <b>100% = laju penuh</b>. Kalau jatuh ke 70%, phone anda sedang throttle, sebab itu game lag.</p>
+  </details>
+
+  <details>
+    <summary>Cara guna untuk gamer</summary>
+    <ul>
+      <li><b>Sekali sahaja:</b> bila phone sejuk (belum main, tak cas), tekan <b>Kalibrasi</b>. Baseline disimpan dalam phone.</li>
+      <li><b>Lepas main game:</b> buka ThermoCheck. Bacaan terus keluar. Kalau &lt;75%, rehatkan phone.</li>
+      <li>Browser pause tab bila anda buka game, jadi website tak boleh pantau <i>semasa</i> game berjalan. Semak sebelum dan selepas main, atau semasa rehat antara match.</li>
+      <li>Tekan <b>Share → Add to Home Screen</b> (iPhone) atau <b>⋮ → Install app</b> (Android) supaya boleh buka macam app.</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>Tips kurangkan panas</summary>
+    <ul>
+      <li>Jangan main sambil cas, sebab cas adalah punca panas nombor 1.</li>
+      <li>Buka casing phone masa main lama.</li>
+      <li>Turunkan graphics / FPS dalam setting game (contoh 60 → 40 FPS).</li>
+      <li>Kurangkan brightness dan tutup app background.</li>
+      <li>Elak main bawah matahari atau atas tilam/bantal.</li>
+      <li>Guna phone cooler (kipas clip-on) untuk sesi panjang.</li>
+    </ul>
+  </details>
+
+  <footer>Tiada login · Tiada data dihantar keluar · Semua berjalan dalam phone anda</footer>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Config ----------
+  const SAMPLE_EVERY_MS = 3000;  // interval between CPU probes
+  const PROBE_MS = 250;          // length of each probe (short = little extra heat)
+  const HISTORY_MAX = 200;       // ~10 minutes at 3s
+  const LS_KEY = 'thermocheck.baseline.v1';
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    pill: $('livePill'), pct: $('pct'), status: $('statusText'), hint: $('hint'),
+    start: $('startBtn'), cal: $('calBtn'), gauge: $('gaugeVal'),
+    fps: $('fps'), score: $('score'), minPct: $('minPct'), chart: $('chart'),
+    batLevel: $('batLevel'), batCharge: $('batCharge'), pressure: $('pressure'),
+    baseline: $('baseline'), wake: $('wake'),
+  };
+
+  // ---------- Benchmark worker (keeps main thread free so FPS reading stays honest) ----------
+  const workerSrc = `
+    onmessage = (e) => {
+      const dur = e.data;
+      const t0 = performance.now();
+      let n = 0, x = 0;
+      while (performance.now() - t0 < dur) {
+        for (let i = 1; i < 15000; i++) x += Math.sqrt(i * 1.0001 + (x % 7)) * Math.sin(i);
+        n++;
+      }
+      postMessage({ score: n / (performance.now() - t0) * 1000, x });
+    };`;
+  const worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })));
+
+  let pending = null;
+  worker.onmessage = e => { if (pending) { pending(e.data.score); pending = null; } };
+  const probe = () => new Promise(res => { pending = res; worker.postMessage(PROBE_MS); });
+
+  // ---------- State ----------
+  let baseline = loadBaseline();       // {score, date} from a cool calibration
+  let sessionBest = 0;                 // fallback baseline when not calibrated
+  let recent = [];                     // last few raw scores (for median smoothing)
+  let history = [];                    // {t, pct}
+  let minPct = null;
+  let running = false;
+  let busy = false;
+  let timer = null;
+  let wakeLock = null;
+
+  function loadBaseline() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY)) || null; } catch { return null; }
+  }
+  function saveBaseline(b) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(b)); } catch {}
+  }
+
+  const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+  const refScore = () => baseline ? baseline.score : sessionBest;
+
+  function level(pct) {
+    if (pct >= 90) return { name: 'Sejuk', color: 'var(--cool)', hint: 'Prestasi penuh. Selamat main!' };
+    if (pct >= 75) return { name: 'Suam', color: 'var(--warm)', hint: 'Phone mula panas. Masih OK, tapi perhatikan.' };
+    if (pct >= 60) return { name: 'Panas — Throttling', color: 'var(--hot)', hint: 'CPU diperlahankan. Game mungkin lag / FPS jatuh.' };
+    return { name: 'Sangat Panas', color: 'var(--crit)', hint: 'Throttle teruk! Rehatkan phone 5–10 minit.' };
+  }
+
+  // ---------- Gauge ----------
+  const ARC_LEN = el.gauge.getTotalLength();
+  el.gauge.style.strokeDasharray = ARC_LEN;
+  el.gauge.style.strokeDashoffset = ARC_LEN;
+
+  function render(pct) {
+    const lv = level(pct);
+    document.documentElement.style.setProperty('--status', lv.color);
+    el.pct.textContent = Math.round(pct);
+    el.status.textContent = lv.name;
+    el.gauge.style.strokeDashoffset = ARC_LEN * (1 - Math.min(pct, 100) / 100);
+    el.hint.textContent = baseline
+      ? lv.hint
+      : lv.hint + ' (Belum kalibrasi: bacaan berbanding skor terbaik sesi ini.)';
+  }
+
+  // ---------- Sampling loop ----------
+  async function tick() {
+    if (!running || busy || document.hidden) return;
+    busy = true;
+    const s = await probe();
+    busy = false;
+    if (!running) return;
+
+    recent.push(s);
+    if (recent.length > 3) recent.shift();
+    const smooth = median(recent);
+    if (smooth > sessionBest) sessionBest = smooth;
+
+    let pct = Math.min(100, (smooth / refScore()) * 100);
+    history.push({ t: Date.now(), pct });
+    if (history.length > HISTORY_MAX) history.shift();
+    minPct = minPct === null ? pct : Math.min(minPct, pct);
+
+    el.score.textContent = Math.round(smooth);
+    el.minPct.textContent = Math.round(minPct) + '%';
+    render(pct);
+    drawChart();
+  }
+
+  async function start() {
+    running = true;
+    el.start.textContent = 'Berhenti';
+    el.start.classList.remove('primary');
+    el.pill.textContent = 'Live';
+    el.pill.classList.add('live');
+    requestWake();
+    await tick();
+    timer = setInterval(tick, SAMPLE_EVERY_MS);
+  }
+
+  function stop() {
+    running = false;
+    clearInterval(timer);
+    el.start.textContent = 'Mula Pantau';
+    el.start.classList.add('primary');
+    el.pill.textContent = 'Berhenti';
+    el.pill.classList.remove('live');
+    releaseWake();
+  }
+
+  el.start.addEventListener('click', () => running ? stop() : start());
+
+  // ---------- Calibration ----------
+  el.cal.addEventListener('click', async () => {
+    if (!confirm('Kalibrasi hanya bila phone SEJUK (belum main game, tidak dicas, sudah rehat beberapa minit). Teruskan?')) return;
+    const wasRunning = running;
+    if (wasRunning) stop();
+    el.cal.disabled = el.start.disabled = true;
+    const samples = [];
+    for (let i = 0; i < 6; i++) {
+      el.hint.textContent = `Mengkalibrasi... ${i + 1}/6`;
+      samples.push(await probe());
+      await new Promise(r => setTimeout(r, 400));
+    }
+    // Discard the first (JIT warm-up), keep the best of the rest
+    baseline = { score: Math.max(...samples.slice(1)), date: new Date().toISOString() };
+    saveBaseline(baseline);
+    recent = []; history = []; minPct = null;
+    showBaseline();
+    el.cal.disabled = el.start.disabled = false;
+    el.hint.textContent = 'Kalibrasi siap! Baseline disimpan dalam phone ini.';
+    drawChart();
+    if (wasRunning) start();
+  });
+
+  function showBaseline() {
+    if (!baseline) return;
+    const d = new Date(baseline.date);
+    el.baseline.textContent = `${Math.round(baseline.score)} · ${d.toLocaleDateString()}`;
+    el.baseline.classList.remove('na');
+  }
+  showBaseline();
+
+  // ---------- FPS meter ----------
+  let frames = 0, fpsT0 = performance.now();
+  (function loop(now) {
+    frames++;
+    if (now - fpsT0 >= 1000) {
+      el.fps.textContent = Math.round(frames * 1000 / (now - fpsT0));
+      frames = 0; fpsT0 = now;
+    }
+    requestAnimationFrame(loop);
+  })(performance.now());
+
+  // ---------- Chart ----------
+  const ctx = el.chart.getContext('2d');
+  function drawChart() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = el.chart.clientWidth, h = el.chart.clientHeight;
+    if (el.chart.width !== w * dpr) { el.chart.width = w * dpr; el.chart.height = h * dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const css = getComputedStyle(document.documentElement);
+    const c = n => css.getPropertyValue(n).trim();
+    const lo = 40, hi = 100;                          // y range in %
+    const y = p => h - ((Math.max(lo, Math.min(hi, p)) - lo) / (hi - lo)) * (h - 8) - 4;
+
+    // zone bands
+    [[90, 100, '--cool'], [75, 90, '--warm'], [60, 75, '--hot'], [lo, 60, '--crit']].forEach(([a, b, v]) => {
+      ctx.fillStyle = c(v); ctx.globalAlpha = 0.08;
+      ctx.fillRect(0, y(b), w, y(a) - y(b));
+    });
+    ctx.globalAlpha = 1;
+
+    // gridlines
+    ctx.strokeStyle = c('--line'); ctx.lineWidth = 1;
+    ctx.fillStyle = c('--muted'); ctx.font = '11px system-ui';
+    [100, 90, 75, 60].forEach(p => {
+      ctx.beginPath(); ctx.moveTo(0, y(p)); ctx.lineTo(w, y(p)); ctx.stroke();
+      if (p < hi) ctx.fillText(p + '%', 4, y(p) - 3);
+    });
+
+    if (history.length < 2) {
+      ctx.fillStyle = c('--muted'); ctx.textAlign = 'center';
+      ctx.fillText('Data akan muncul bila pemantauan bermula', w / 2, h / 2);
+      ctx.textAlign = 'start';
+      return;
+    }
+
+    const step = w / (HISTORY_MAX - 1);
+    const x0 = w - (history.length - 1) * step;
+    for (let i = 1; i < history.length; i++) {
+      ctx.strokeStyle = level(history[i].pct).color.replace(/var\((--[\w-]+)\)/, (_, n) => c(n));
+      ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x0 + (i - 1) * step, y(history[i - 1].pct));
+      ctx.lineTo(x0 + i * step, y(history[i].pct));
+      ctx.stroke();
+    }
+  }
+  window.addEventListener('resize', drawChart);
+  drawChart();
+
+  // ---------- Battery (Chrome Android only; iOS Safari does not expose it) ----------
+  if (navigator.getBattery) {
+    navigator.getBattery().then(b => {
+      const upd = () => {
+        el.batLevel.textContent = Math.round(b.level * 100) + '%';
+        el.batLevel.classList.remove('na');
+        el.batCharge.textContent = b.charging ? '⚡ Sedang dicas (menambah panas!)' : 'Tidak dicas';
+        el.batCharge.style.color = b.charging ? 'var(--hot)' : '';
+        el.batCharge.classList.remove('na');
+      };
+      upd();
+      b.addEventListener('levelchange', upd);
+      b.addEventListener('chargingchange', upd);
+    }).catch(() => {});
+  }
+
+  // ---------- Compute Pressure API (system-reported thermal/CPU pressure, where available) ----------
+  if ('PressureObserver' in window) {
+    const map = { nominal: ['Normal', 'var(--cool)'], fair: ['Sederhana', 'var(--warm)'],
+                  serious: ['Tinggi', 'var(--hot)'], critical: ['Kritikal', 'var(--crit)'] };
+    try {
+      const po = new PressureObserver(records => {
+        const st = records[records.length - 1].state;
+        const [label, color] = map[st] || [st, ''];
+        el.pressure.textContent = label;
+        el.pressure.style.color = color;
+        el.pressure.classList.remove('na');
+      });
+      po.observe('cpu', { sampleInterval: 2000 }).catch(() => {});
+    } catch {}
+  }
+
+  // ---------- Keep screen awake while monitoring ----------
+  async function requestWake() {
+    if (!('wakeLock' in navigator)) { el.wake.textContent = 'Tidak disokong'; return; }
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      el.wake.textContent = 'Ya'; el.wake.classList.remove('na');
+      wakeLock.addEventListener('release', () => { if (!running) el.wake.textContent = 'Tidak'; });
+    } catch { el.wake.textContent = 'Tidak'; }
+  }
+  function releaseWake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+
+  // When user returns from a game, re-acquire wake lock and sample immediately
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && running) { requestWake(); tick(); }
+  });
+
+  // ---------- Offline / installable ----------
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
